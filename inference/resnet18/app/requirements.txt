@@ -1,0 +1,7 @@
+fastapi==0.141.1
+uvicorn==0.53.0
+python-multipart==0.0.32
+numpy==2.5.3
+pillow==12.3.0
+cuda-python==13.4.1
+prometheus-client==0.22.1

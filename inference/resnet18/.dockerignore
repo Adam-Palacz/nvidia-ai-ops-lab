@@ -1,0 +1,12 @@
+**/.venv
+**/__pycache__
+**/*.pyc
+.git
+*.onnx
+*.onnx.data
+*.engine
+!resnet18_fp16.engine
+*.nsys-rep
+*.sqlite
+export.py
+app/dog.jpg
