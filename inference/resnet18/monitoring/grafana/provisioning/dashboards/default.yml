@@ -1,0 +1,10 @@
+apiVersion: 1
+
+providers:
+  - name: ResNet18
+    folder: NVIDIA AI Ops Lab
+    type: file
+    disableDeletion: true
+    updateIntervalSeconds: 10
+    options:
+      path: /var/lib/grafana/dashboards

@@ -1,0 +1,21 @@
+.venv/
+__pycache__/
+*.py[cod]
+
+# Generated model and profiling artifacts
+*.engine
+*.onnx
+*.onnx.data
+*.nsys-rep
+*.sqlite
+
+# Local test assets
+*.jpg
+*.jpeg
+*.png
+
+# CUDA build outputs
+/cuda/vector-add/benchmark
+/cuda/vector-add/vector_add
+
+.DS_Store
