@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gpu-lab
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cuda-gpu-test
+  namespace: gpu-lab
+spec:
+  restartPolicy: Never
+  runtimeClassName: nvidia
+  nodeSelector:
+    kubernetes.io/hostname: apailegion
+  containers:
+    - name: cuda
+      image: nvidia/cuda:12.8.1-base-ubuntu24.04
+      command:
+        - bash
+        - -lc
+        - |
+          set -euo pipefail
+          nvidia-smi
+          test -e /dev/dxg || test -e /dev/nvidia0
+          echo "CUDA device test: PASSED"
+      resources:
+        limits:
+          nvidia.com/gpu: 1

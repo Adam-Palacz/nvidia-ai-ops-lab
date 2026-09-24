@@ -1,69 +1,82 @@
 # NVIDIA AI Ops Lab
 
-Hands-on CUDA and inference optimization on NVIDIA Jetson. Phase 1 builds a
-measured ResNet18 serving path from model export to an observable containerized
-service.
+Hands-on NVIDIA GPU, inference, and Kubernetes operations across two different
+architectures:
 
-## Phase 1 architecture
-
-```mermaid
-flowchart LR
-    A[PyTorch ResNet18] -->|export.py| B[ONNX]
-    B -->|trtexec| C[TensorRT FP32 / FP16]
-    C --> D[Jetson Orin GPU]
-    D --> E[FastAPI in Docker]
-    E --> F[Prometheus]
-    F --> G[Grafana]
+```text
+Jetson Orin Nano (ARM64, K3s control-plane)
+                    │
+             Tailscale underlay
+                    │
+Legion WSL2 (AMD64, RTX 5070, K3s agent)
+                    │
+                   K3s
+                    │
+          NVIDIA Device Plugin
+                    │
+              GPU workloads
 ```
 
-The inference service reports request latency and the individual preprocessing,
-H2D, TensorRT GPU, D2H, and postprocessing components. TensorRT benchmarks cover
-strict FP32 and FP16 with 1, 2, 4, and 8 concurrent inference streams.
+The Tailscale link is the underlay for Flannel VXLAN. It replaces direct VXLAN
+over WSL mirrored networking, which did not deliver inbound UDP 8472 traffic
+from the LAN to WSL.
+
+## Current status
+
+- ResNet18 TensorRT FP32/FP16 benchmarks on Jetson are complete and reproducible.
+- The two-node, mixed-architecture K3s cluster is connected through Tailscale.
+- Cross-node pod connectivity and bidirectional iperf3 traffic are validated.
+- NVIDIA runtime, device-plugin, and GPU workload manifests are prepared for
+  validation on the Legion worker.
 
 ## Repository
 
 ```text
 cuda/vector-add/              CUDA kernel and CPU/GPU benchmark
-inference/resnet18/
-├── app/                      TensorRT runtime and FastAPI service
-├── benchmarks/               Reproducible performance runner
-├── monitoring/               Prometheus and Grafana provisioning
-├── scripts/                  Engine build and Nsight profiling
-├── docker-compose.yml        Jetson service stack
-├── RESULTS.md                Phase 1 measurements and findings
-└── README.md                 ResNet18 setup and operations
+docs/k3s-cluster.md           Cluster architecture, decisions, and runbook
+k8s/                          GPU and networking Kubernetes manifests
+scripts/                      K3s, Tailscale, and NVIDIA runtime bootstrap
+inference/resnet18/           Phase 1 TensorRT inference pipeline
 ```
 
-Generated ONNX models, TensorRT engines, virtual environments, and profiler
-reports are intentionally excluded from Git.
+Generated models, TensorRT engines, kubeconfigs, credentials, virtual
+environments, and profiler reports are intentionally excluded from Git.
 
-## Quick start
+## Cluster quick start
 
-The deployment target is an NVIDIA Jetson Orin Nano Super Developer Kit running
-Jetson Linux R39.2.1, TensorRT 10.16.2, and the NVIDIA Container Runtime.
+The scripts discover the local Tailscale IPv4 address. The agent token is passed
+only through the environment and must not be committed.
+
+```bash
+# Jetson control-plane
+sudo ./scripts/setup-tailscale.sh
+sudo ./scripts/bootstrap-k3s-server.sh
+
+# Legion WSL agent
+sudo ./scripts/setup-tailscale.sh
+sudo env \
+  K3S_URL=https://100.101.234.11:6443 \
+  K3S_TOKEN='<read from the server at runtime>' \
+  ./scripts/join-k3s-agent.sh
+sudo ./scripts/setup-nvidia-runtime.sh
+```
+
+Install the device plugin and run the GPU checks by following
+[`k8s/nvidia-device-plugin/README.md`](k8s/nvidia-device-plugin/README.md).
+Operational details and troubleshooting are in
+[`docs/k3s-cluster.md`](docs/k3s-cluster.md).
+
+## Phase 1: TensorRT inference
+
+Phase 1 exports ResNet18 to ONNX, builds strict FP32 and FP16 TensorRT engines,
+serves inference through FastAPI, and exposes Prometheus/Grafana telemetry.
 
 ```bash
 cd inference/resnet18
-
-# Export pretrained torchvision ResNet18.
 python3 export.py
-
-# Build strict FP32 and FP16 TensorRT engines.
 ./scripts/build_engines.sh
-
-# Start inference, Prometheus, and Grafana.
 sudo docker compose up --build -d
-
-# Verify inference.
-curl -F "file=@/path/to/image.jpg" http://localhost:8001/infer
 ```
 
-Services:
-
-- inference API and metrics: `localhost:8001`
-- Prometheus: `localhost:9090`
-- Grafana: `localhost:3000` (`admin` / `admin`)
-
-See [the ResNet18 guide](inference/resnet18/README.md) for detailed commands and
-[Phase 1 results](inference/resnet18/RESULTS.md) for benchmark methodology and
-findings.
+See the [ResNet18 guide](inference/resnet18/README.md) and
+[measured results](inference/resnet18/RESULTS.md).

@@ -19,3 +19,11 @@ __pycache__/
 /cuda/vector-add/vector_add
 
 .DS_Store
+*.plan
+
+# Local cluster credentials and environment
+.env
+.env.*
+*.kubeconfig
+kubeconfig
+*.token

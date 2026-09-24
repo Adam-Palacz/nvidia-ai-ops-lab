@@ -1,0 +1,9 @@
+# The Legion WSL worker is the current discrete-GPU target.
+nodeSelector:
+  kubernetes.io/hostname: apailegion
+
+# K3s creates this RuntimeClass after discovering nvidia-container-runtime.
+runtimeClassName: nvidia
+
+# Fail visibly when the worker runtime is not configured correctly.
+failOnInitError: true
