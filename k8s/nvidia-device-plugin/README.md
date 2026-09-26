@@ -1,7 +1,12 @@
 # NVIDIA Device Plugin
 
-This directory contains environment-specific Helm values for the Legion WSL
-worker. Install NVIDIA Container Toolkit on that worker first:
+This directory contains Helm values shared by both GPU nodes:
+
+- Jetson Orin Nano (`adamp`, ARM64/Tegra)
+- Legion WSL (`apailegion`, AMD64/RTX 5070)
+
+Install and configure NVIDIA Container Toolkit on each node before installing
+the plugin. On the Legion worker:
 
 ```bash
 sudo ./scripts/setup-nvidia-runtime.sh
@@ -34,22 +39,28 @@ Verify resource discovery:
 
 ```bash
 sudo k3s kubectl get pods -n nvidia-device-plugin -o wide
-sudo k3s kubectl get node apailegion \
-  -o jsonpath='{.status.allocatable.nvidia\.com/gpu}{"\n"}'
+sudo k3s kubectl get nodes \
+  -o custom-columns=NODE:.metadata.name,GPU:.status.allocatable.nvidia\\.com/gpu
 ```
 
-Run the lightweight CUDA check first:
+Both `adamp` and `apailegion` should report one allocatable GPU. The values use
+`deviceIDStrategy: index`; this is required because the Tegra device ID
+`tegra` is not accepted by the CSV injection path.
+
+Run the lightweight CUDA checks:
 
 ```bash
 sudo k3s kubectl apply -f k8s/gpu-test.yaml
+sudo k3s kubectl apply -f k8s/jetson-gpu-test.yaml
 sudo k3s kubectl wait -n gpu-lab \
   --for=jsonpath='{.status.phase}'=Succeeded \
-  pod/cuda-gpu-test \
+  pod/cuda-gpu-test pod/jetson-gpu-test \
   --timeout=300s
 sudo k3s kubectl logs -n gpu-lab cuda-gpu-test
+sudo k3s kubectl logs -n gpu-lab jetson-gpu-test
 ```
 
-Then run the larger PyTorch container:
+Then run the larger PyTorch container on Legion:
 
 ```bash
 sudo k3s kubectl apply -f k8s/pytorch-gpu.yaml
@@ -60,6 +71,7 @@ Delete completed test pods before rerunning them:
 
 ```bash
 sudo k3s kubectl delete -f k8s/gpu-test.yaml --ignore-not-found
+sudo k3s kubectl delete -f k8s/jetson-gpu-test.yaml --ignore-not-found
 sudo k3s kubectl delete -f k8s/pytorch-gpu.yaml --ignore-not-found
 ```
 

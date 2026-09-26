@@ -1,0 +1,131 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: distributed-lab
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gloo-test
+  namespace: distributed-lab
+data:
+  distributed_test.py: |
+    import os
+    import socket
+
+    import torch
+    import torch.distributed as dist
+
+    rank = int(os.environ["RANK"])
+    world_size = int(os.environ["WORLD_SIZE"])
+
+    print(
+        f"host={socket.gethostname()} "
+        f"rank={rank}/{world_size} "
+        f"torch={torch.__version__}",
+        flush=True,
+    )
+
+    dist.init_process_group(
+        backend="gloo",
+        init_method="env://",
+        rank=rank,
+        world_size=world_size,
+    )
+
+    value = torch.tensor([rank + 1.0])
+    print(f"rank={rank} before all_reduce: {value.item()}", flush=True)
+
+    dist.all_reduce(value, op=dist.ReduceOp.SUM)
+
+    print(f"rank={rank} after  all_reduce: {value.item()}", flush=True)
+    assert value.item() == 3.0
+
+    dist.barrier()
+    if rank == 0:
+        print("DISTRIBUTED TEST: PASSED", flush=True)
+
+    dist.destroy_process_group()
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gloo-master
+  namespace: distributed-lab
+spec:
+  clusterIP: None
+  selector:
+    app: gloo-test
+    rank: "0"
+  ports:
+    - name: rendezvous
+      port: 29500
+      targetPort: 29500
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gloo-rank0
+  namespace: distributed-lab
+  labels:
+    app: gloo-test
+    rank: "0"
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    kubernetes.io/hostname: adamp
+  containers:
+    - name: worker
+      image: nvcr.io/nvidia/pytorch:26.08-py3
+      imagePullPolicy: IfNotPresent
+      command: ["python", "/work/distributed_test.py"]
+      env:
+        - name: RANK
+          value: "0"
+        - name: WORLD_SIZE
+          value: "2"
+        - name: MASTER_ADDR
+          value: gloo-master
+        - name: MASTER_PORT
+          value: "29500"
+      volumeMounts:
+        - name: code
+          mountPath: /work
+  volumes:
+    - name: code
+      configMap:
+        name: gloo-test
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gloo-rank1
+  namespace: distributed-lab
+  labels:
+    app: gloo-test
+    rank: "1"
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    kubernetes.io/hostname: apailegion
+  containers:
+    - name: worker
+      image: nvcr.io/nvidia/pytorch:26.08-py3
+      imagePullPolicy: IfNotPresent
+      command: ["python", "/work/distributed_test.py"]
+      env:
+        - name: RANK
+          value: "1"
+        - name: WORLD_SIZE
+          value: "2"
+        - name: MASTER_ADDR
+          value: gloo-master
+        - name: MASTER_PORT
+          value: "29500"
+      volumeMounts:
+        - name: code
+          mountPath: /work
+  volumes:
+    - name: code
+      configMap:
+        name: gloo-test

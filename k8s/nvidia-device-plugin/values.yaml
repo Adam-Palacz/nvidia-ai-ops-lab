@@ -1,9 +1,13 @@
-# The Legion WSL worker is the current discrete-GPU target.
-nodeSelector:
-  kubernetes.io/hostname: apailegion
+# Run on both GPU nodes: Jetson Orin and Legion WSL.
+nodeSelector: {}
 
-# K3s creates this RuntimeClass after discovering nvidia-container-runtime.
+# K3s creates this RuntimeClass after discovering nvidia-container-runtime
+# on each node.
 runtimeClassName: nvidia
 
 # Fail visibly when the worker runtime is not configured correctly.
 failOnInitError: true
+
+# Tegra devices are reported as "tegra", which is not a supported device ID
+# for the CSV injection path. Numeric indexes work on both Tegra and WSL.
+deviceIDStrategy: index

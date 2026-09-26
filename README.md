@@ -26,8 +26,15 @@ from the LAN to WSL.
 - ResNet18 TensorRT FP32/FP16 benchmarks on Jetson are complete and reproducible.
 - The two-node, mixed-architecture K3s cluster is connected through Tailscale.
 - Cross-node pod connectivity and bidirectional iperf3 traffic are validated.
-- NVIDIA runtime, device-plugin, and GPU workload manifests are prepared for
-  validation on the Legion worker.
+- NVIDIA Container Runtime and Device Plugin expose one GPU on each node.
+- CUDA workloads pass on Jetson Orin and RTX 5070; the PyTorch matrix
+  multiplication test passes on the Legion worker.
+- Cross-node PyTorch `all_reduce` passes over Gloo/TCP.
+- NCCL is not supported on Jetson Orin. The tested NCCL 2.30 build fails during
+  NVML P2P discovery, so mixed Jetson/RTX distributed workloads use Gloo.
+
+Last validated on 2026-09-25. Live cluster access depends on the Jetson
+control-plane and Tailscale being online.
 
 ## Repository
 

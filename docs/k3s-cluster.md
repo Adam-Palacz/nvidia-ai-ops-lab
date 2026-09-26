@@ -44,6 +44,22 @@ traffic. After the change:
 
 These are connectivity checks, not stable performance baselines.
 
+## Last validated state
+
+The following state was confirmed on 2026-09-25:
+
+- both nodes were `Ready`;
+- NVIDIA Device Plugin advertised `nvidia.com/gpu: 1` on each node;
+- the CUDA vector-add sample passed on Jetson Orin;
+- the CUDA and PyTorch matrix-multiplication checks passed on Legion WSL;
+- a two-rank PyTorch CPU tensor `all_reduce` passed across the nodes using
+  Gloo/TCP, producing `1.0 + 2.0 = 3.0`;
+- NCCL 2.30.7 from `nvcr.io/nvidia/pytorch:26.08-py3` failed on the Jetson
+  during NVML P2P discovery.
+
+Live status still requires the Jetson control-plane and Tailscale route to be
+available. A cached kubeconfig alone does not imply that the cluster is online.
+
 ## K3s configuration
 
 The server configuration is equivalent to:
@@ -118,16 +134,64 @@ sudo k3s kubectl get runtimeclass nvidia
 sudo k3s kubectl get node apailegion \
   -o jsonpath='{.status.allocatable.nvidia\.com/gpu}{"\n"}'
 sudo k3s kubectl apply -f k8s/gpu-test.yaml
+sudo k3s kubectl apply -f k8s/jetson-gpu-test.yaml
 sudo k3s kubectl logs -n gpu-lab pod/cuda-gpu-test
+sudo k3s kubectl logs -n gpu-lab pod/jetson-gpu-test
 ```
 
-The GPU path is considered validated only after the node reports
-`nvidia.com/gpu` and both test manifests complete successfully.
+The GPU path is validated on both nodes. The plugin must use numeric device
+indexes so the Jetson's Tegra GPU does not reach the unsupported CSV device ID
+path:
+
+```yaml
+deviceIDStrategy: index
+```
+
+Without that setting, pod creation on the Jetson fails with
+`unsupported device id: tegra`.
+
+## Distributed PyTorch validation
+
+The reproducible mixed-node test uses Gloo over the pod network. It deliberately
+operates on CPU tensors; CUDA execution is validated independently on each
+node.
+
+```bash
+kubectl apply -f k8s/distributed/gloo-cross-node-test.yaml
+kubectl wait -n distributed-lab \
+  --for=jsonpath='{.status.phase}'=Succeeded \
+  pod/gloo-rank0 pod/gloo-rank1 \
+  --timeout=300s
+kubectl logs -n distributed-lab gloo-rank0
+kubectl logs -n distributed-lab gloo-rank1
+```
+
+Rank 0 should print:
+
+```text
+rank=0 after  all_reduce: 3.0
+DISTRIBUTED TEST: PASSED
+```
+
+NCCL is not a supported backend on Jetson Orin. The tested build failed at
+communicator initialization with:
+
+```text
+nvmlDeviceGetP2PStatus(0,0,NVML_P2P_CAPS_INDEX_READ) failed: Not Supported
+```
+
+The RTX rank subsequently reported a network/remote-process error because the
+Jetson rank had already exited. This does not indicate a Flannel failure.
+`NCCL_P2P_DISABLE=1` is not a reliable workaround because the failure occurs
+during NVML topology discovery. Use Gloo for this mixed Jetson/RTX lab, or use
+NCCL only between platforms on which NVIDIA supports it.
 
 ## Operational notes
 
 - A WSL shutdown stops the K3s agent. The node returns after WSL and
   `k3s-agent` start again.
+- The Jetson is the K3s control-plane. If it or its Tailscale route is offline,
+  `kubectl` cannot reach the API server.
 - Tailscale authentication is external state. Never commit auth keys or login
   URLs.
 - TensorRT engine plans are tied to GPU architecture and TensorRT version.
